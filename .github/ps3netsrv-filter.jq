@@ -18,4 +18,4 @@ def add_latest_commit_as_ref:
   .[] |= . + { "ref": (.commits | first) };
 
 # Apply both filters
-add_latest_commit_as_ref | filter_last_five_versions | add_version_to_tags($gitref) | add_commit_to_tags($gitref) | add_latest_tag_to_first_object($gitref)
+add_latest_commit_as_ref | filter_last_five_versions | add_version_to_tags($gitref) | add_latest_tag_to_first_object($gitref)

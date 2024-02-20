@@ -4,8 +4,8 @@
 # https://github.com/shawly/docker-ps3netsrv
 #
 
-# Set alpine version
-ARG ALPINE_VERSION=3.18
+# Set debian version
+ARG SLIM_VERSION=bookworm-slim
 
 # Set vars for s6 overlay
 ARG S6_OVERLAY_RELEASE=v3.1.6.2
@@ -22,24 +22,24 @@ ARG PS3NETSRV_VERSION
 ARG PS3NETSRV_GITHUB_API_URL=https://api.github.com/repos/aldostools/webMAN-MOD/releases
 
 # Set base images with s6 overlay download variable (necessary for multi-arch building via GitHub workflows)
-FROM alpine:${ALPINE_VERSION} as alpine-amd64
+FROM debian:${SLIM_VERSION} as debian-amd64
 
 ARG S6_OVERLAY_ARCH=x86_64
 
-FROM alpine:${ALPINE_VERSION} as alpine-armv6
+FROM debian:${SLIM_VERSION} as debian-armv6
 
 ARG S6_OVERLAY_ARCH=armhf
 
-FROM alpine:${ALPINE_VERSION} as alpine-armv7
+FROM debian:${SLIM_VERSION} as debian-armv7
 
 ARG S6_OVERLAY_ARCH=arm
 
-FROM alpine:${ALPINE_VERSION} as alpine-arm64
+FROM debian:${SLIM_VERSION} as debian-arm64
 
 ARG S6_OVERLAY_ARCH=aarch64
 
 # Build ps3netsrv:master
-FROM alpine:${ALPINE_VERSION} as builder
+FROM debian:${SLIM_VERSION} as builder
 
 ARG PS3NETSRV_REPO
 ARG PS3NETSRV_SRC_DIR
@@ -47,6 +47,7 @@ ARG PS3NETSRV_SRC_REF
 ARG PS3NETSRV_GITHUB_API_URL
 ARG PS3NETSRV_VERSION
 ARG BUILD_FROM_GIT
+ARG DEBIAN_FRONTEND=noninteractive
 
 # Change working dir
 WORKDIR /tmp
@@ -55,22 +56,21 @@ WORKDIR /tmp
 RUN \
   set -e && \
   echo "Installing build dependencies..." && \
-  apk add --update --no-cache \
+  apt-get update && \
+  apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
     curl \
-    jq \
     git \
-    build-base \
+    libmbedtls-dev \
+    libssl-dev \
     meson \
-    mbedtls-dev \
-    musl \
-    musl-dev \
-    musl-dbg \
-    musl-utils \
-    tar \
-    unzip
+    ninja-build \
+    unzip \
+    xz-utils
 
 RUN \
-  [ "${BUILD_FROM_GIT:-}" != "true" ] || (echo "Building ps3netsrv from git repo (ref: ${PS3NETSRV_SRC_REF:?})..." && \
+  bash -c "[ "${BUILD_FROM_GIT:-}" != "true" ]" || (echo "Building ps3netsrv from git repo (ref: ${PS3NETSRV_SRC_REF:?})..." && \
     mkdir -p /tmp/repo/ && \
     cd /tmp/repo/ && \
     git init && \
@@ -84,7 +84,7 @@ RUN \
     cp -v /tmp/repo/${PS3NETSRV_SRC_DIR:?}/build/ps3netsrv /tmp/ps3netsrv-bin/)
 
 RUN \
-  [ "${BUILD_FROM_GIT:-}" == "true" ] || (echo "Building ps3netsrv from release (ps3netsrv_${PS3NETSRV_VERSION:?}.zip)..." && \
+  bash -c "[ "${BUILD_FROM_GIT:-false}" == "true" ]" || (echo "Building ps3netsrv from release (ps3netsrv_${PS3NETSRV_VERSION:-}.zip)..." && \
     cd /tmp && \
     echo "Getting releases from ${PS3NETSRV_GITHUB_API_URL:?}" && \
       curl -sL -o releases.json "${PS3NETSRV_GITHUB_API_URL:?}" && \
@@ -102,11 +102,12 @@ RUN \
       cp -v build/ps3netsrv /tmp/ps3netsrv-bin/)
 
 # Runtime container
-FROM alpine-${TARGETARCH:-amd64}${TARGETVARIANT}
+FROM debian-${TARGETARCH:-amd64}${TARGETVARIANT}
 
 ARG S6_OVERLAY_RELEASE
 ARG S6_OVERLAY_ARCH
 ARG S6_OVERLAY_DOWNLOAD_URL
+ARG DEBIAN_FRONTEND=noninteractive
 
 # Add s6-overlay files
 ADD ${S6_OVERLAY_DOWNLOAD_URL}/${S6_OVERLAY_RELEASE}/s6-overlay-noarch.tar.xz /tmp
@@ -119,16 +120,12 @@ COPY --from=builder /tmp/ps3netsrv-bin/ps3netsrv /usr/local/bin/ps3netsrv
 RUN \
   set -e && \
   echo "Installing runtime dependencies..." && \
-  apk add --no-cache \
-    bash \
-    coreutils \
-    shadow \
+  apt-get update && \
+  apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libmbedtls14 \
     tzdata \
-    libstdc++ \
-    musl \
-    musl-utils \
-    mbedtls \
-    xz && \
+    xz-utils && \
   echo "Extracting s6 overlay..." && \
     tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz && \
     tar -C / -Jxpf /tmp/s6-overlay-${S6_OVERLAY_ARCH}.tar.xz && \
@@ -138,10 +135,11 @@ RUN \
     mkdir -p /var/log/ps3netsrv && \
     chown -R nobody:nogroup /var/log/ps3netsrv && \
   echo "Removing not needed packages" && \
-    apk del --purge \
-      xz && \
+    apt-get autoremove -y \
+      xz-utils && \
   echo "Cleaning up temp directory..." && \
-    rm -rf /tmp/*
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Add files
 COPY rootfs/ /

@@ -19,6 +19,7 @@ env:
   IMAGE_TITLE: ps3netsrv
   IMAGE_DESCRIPTION: Docker container for ps3netsrv
   IMAGE_LICENSE: gpl-3.0-or-later
+  ALPINE_VERSION: 3.18
 
 jobs:
   build-matrix:
@@ -267,12 +268,12 @@ jobs:
 
           # Replace supported tags in README.md
           # Define the start and end comments in the README.md file
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            start_comment='<!-- edge tags start -->'
-            end_comment='<!-- edge tags end -->'
-          else
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             start_comment='<!-- latest tags start -->'
             end_comment='<!-- latest tags end -->'
+          else
+            start_comment='<!-- edge tags start -->'
+            end_comment='<!-- edge tags end -->'
           fi
 
           # Cleanout space between start and end comment
